@@ -1,5 +1,6 @@
 # Movee — Ride-Sharing Web Application
 
+
 Movee is a modern ride-sharing platform similar to Uber/Bolt, built with Next.js 15, TypeScript, Prisma, Tailwind CSS, and **Socket.io** for real-time updates.
 
 ## Admin Panel
