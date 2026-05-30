@@ -6,6 +6,8 @@
     "dev": "tsx server.ts",
     "build": "next build",
     "start": "tsx server.ts",
+    "railway:build": "prisma generate && npm run build",
+    "railway:start": "prisma db push && tsx server.ts",
     "lint": "next lint",
     "db:push": "prisma db push",
     "db:seed": "npx tsx prisma/seed.ts",
@@ -24,7 +26,9 @@
     "react-leaflet": "^5.0.0",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "prisma": "^6.9.0",
+    "tsx": "^4.19.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.8",
@@ -36,9 +40,7 @@
     "@types/uuid": "^10.0.0",
     "eslint": "^9.28.0",
     "eslint-config-next": "^15.3.3",
-    "prisma": "^6.9.0",
     "tailwindcss": "^4.1.8",
-    "tsx": "^4.19.4",
     "typescript": "^5.8.3"
   }
 }

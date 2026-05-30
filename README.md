@@ -84,16 +84,7 @@ Movee needs a **always-on Node server** (Socket.io + custom `server.ts`). **Verc
 
 ### Before you deploy
 
-1. **Use PostgreSQL** (not SQLite) in production — SQLite files are lost on most cloud restarts.
-
-   In `prisma/schema.prisma`, change:
-
-   ```prisma
-   datasource db {
-     provider = "postgresql"
-     url      = env("DATABASE_URL")
-   }
-   ```
+1. **PostgreSQL** — the schema uses PostgreSQL (required for Railway and other hosts). For local dev: `docker compose up -d` then set `DATABASE_URL` in `.env` from `.env.example`.
 
 2. **Set strong secrets** — copy `.env.example` and set:
    - `JWT_SECRET` — long random string ([generate one](https://generate-secret.vercel.app/32))
@@ -113,25 +104,34 @@ Movee needs a **always-on Node server** (Socket.io + custom `server.ts`). **Verc
 
 ### Option A — Railway (recommended, easiest)
 
-Good for beginners: Node + PostgreSQL + HTTPS in one place.
+The repo includes `railway.toml` with build/start commands. Prisma uses **PostgreSQL**.
 
-1. Push your code to **GitHub**.
-2. Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub** → select your repo.
-3. Add a **PostgreSQL** plugin to the project → copy `DATABASE_URL` into your app service variables.
-4. In the app service → **Variables**, add:
+1. Push your code to **GitHub** ([Carti0z/Movee](https://github.com/Carti0z/Movee)).
+2. [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub** → select **Movee**.
+3. In the project, click **+ New** → **Database** → **PostgreSQL**.
+4. Click your **web service** (the repo) → **Variables** → **Add variable** (or **Reference** the Postgres service’s `DATABASE_URL`):
 
-   | Variable | Example |
-   |----------|---------|
-   | `DATABASE_URL` | (from PostgreSQL plugin) |
-   | `JWT_SECRET` | your-secret |
-   | `NEXT_PUBLIC_APP_URL` | `https://your-app.up.railway.app` |
+   | Variable | Value |
+   |----------|--------|
+   | `DATABASE_URL` | Reference → PostgreSQL → `DATABASE_URL` |
+   | `JWT_SECRET` | Long random string |
+   | `NEXT_PUBLIC_APP_URL` | Your Railway public URL (Settings → Networking → generate domain), e.g. `https://movee-production.up.railway.app` |
    | `NODE_ENV` | `production` |
+   | `NEXT_PUBLIC_APP_NAME` | `Movee` |
+   | `PLATFORM_COMMISSION_RATE` | `0.15` |
+   | `NEXT_PUBLIC_COMMISSION_RATE` | `0.15` |
 
-5. **Settings** → **Deploy**:
-   - **Build command:** `npm install && npx prisma generate && npm run build`
-   - **Start command:** `npx prisma db push && npm run start`
-6. Open the generated URL → run seed once via Railway shell: `npm run db:seed`
-7. Optional: **Settings** → **Networking** → add a custom domain.
+5. **Settings** → **Networking** → **Generate Domain** (if you have not already).
+6. Set `NEXT_PUBLIC_APP_URL` to that exact HTTPS URL (no trailing slash), then **Redeploy**.
+7. After the first successful deploy: service → **⋯** → **Shell** → run once:
+
+   ```bash
+   npm run db:seed
+   ```
+
+8. Open the public URL and log in with demo accounts (see above).
+
+**CLI (optional):** `npm i -g @railway/cli` → `railway login` → `railway link` → `railway up`.
 
 ---
 

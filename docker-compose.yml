@@ -1,0 +1,15 @@
+# Local PostgreSQL (matches production / Railway)
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: movee
+      POSTGRES_PASSWORD: movee
+      POSTGRES_DB: movee
+    ports:
+      - "5432:5432"
+    volumes:
+      - movee_pg_data:/var/lib/postgresql/data
+
+volumes:
+  movee_pg_data:
