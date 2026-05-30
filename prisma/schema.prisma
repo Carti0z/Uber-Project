@@ -1,0 +1,118 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  RIDER
+  DRIVER
+  ADMIN
+}
+
+enum RideStatus {
+  REQUESTED
+  DRIVER_ASSIGNED
+  DRIVER_ARRIVING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  passwordHash  String
+  name          String
+  phone         String?
+  role          UserRole       @default(RIDER)
+  suspended     Boolean        @default(false)
+  avatarUrl     String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  driverProfile DriverProfile?
+  ridesAsRider  Ride[]         @relation("RiderRides")
+  ridesAsDriver Ride[]         @relation("DriverRides")
+  resetTokens   PasswordResetToken[]
+}
+
+model DriverProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isOnline        Boolean  @default(false)
+  licenseNumber   String?
+  licenseDocUrl   String?
+  vehicleMake     String?
+  vehicleModel    String?
+  vehiclePlate    String?
+  vehicleColor    String?
+  vehicleDocUrl   String?
+  currentLat      Float?
+  currentLng      Float?
+  documentsVerified Boolean @default(false)
+  averageRating     Float    @default(0)
+  ratingCount       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Ride {
+  id                String        @id @default(cuid())
+  riderId           String
+  rider             User          @relation("RiderRides", fields: [riderId], references: [id])
+  driverId          String?
+  driver            User?         @relation("DriverRides", fields: [driverId], references: [id])
+  status            RideStatus    @default(REQUESTED)
+  pickupAddress     String
+  pickupLat         Float
+  pickupLng         Float
+  destinationAddress String
+  destinationLat    Float
+  destinationLng    Float
+  distanceKm        Float
+  durationMin       Float
+  estimatedFare     Float
+  finalFare         Float?
+  platformCommission Float?
+  driverEarnings    Float?
+  commissionRate    Float?
+  paymentMethod     PaymentMethod @default(CASH)
+  paymentStatus     PaymentStatus @default(PENDING)
+  driverLat         Float?
+  driverLng         Float?
+  etaMinutes        Int?
+  tripProgress      Int           @default(0)
+  cancelledBy       String?
+  cancelReason      String?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  rating            Int?
+  ratingComment     String?
+  ratedAt           DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}

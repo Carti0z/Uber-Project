@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+:root {
+  --movee-primary: #0ea5e9;
+  --movee-primary-dark: #0284c7;
+  --movee-accent: #f59e0b;
+  --movee-bg: #0f172a;
+  --movee-surface: #1e293b;
+  --movee-card: #334155;
+}
+
+body {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+  min-height: 100vh;
+  color: #f8fafc;
+}
+
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  border-radius: 0.75rem;
+  z-index: 0;
+}
+
+input, select, textarea {
+  color-scheme: dark;
+}
