@@ -32,6 +32,12 @@ enum PaymentStatus {
   COMPLETED
 }
 
+enum DriverVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
 model User {
   id            String         @id @default(cuid())
   email         String         @unique
@@ -54,6 +60,7 @@ model DriverProfile {
   userId          String   @unique
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   isOnline        Boolean  @default(false)
+  nin             String?
   licenseNumber   String?
   licenseDocUrl   String?
   vehicleMake     String?
@@ -63,9 +70,14 @@ model DriverProfile {
   vehicleDocUrl   String?
   currentLat      Float?
   currentLng      Float?
+  ninVerified      Boolean @default(false)
+  licenseVerified  Boolean @default(false)
   documentsVerified Boolean @default(false)
-  averageRating     Float    @default(0)
-  ratingCount       Int      @default(0)
+  verificationStatus DriverVerificationStatus @default(PENDING)
+  verificationRemark String?
+  verificationCheckedAt DateTime?
+  averageRating     Float   @default(0)
+  ratingCount       Int     @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }

@@ -24,11 +24,19 @@ interface Stats {
 
 export function AdminDashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    api<Stats>("/api/admin/stats").then(({ data }) => {
-      if (data) setStats(data);
-    });
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const { data, error: apiError } = await api<Stats>("/api/admin/stats");
+    if (data) {
+      setStats(data);
+    } else {
+      setError(apiError || "Failed to load dashboard");
+    }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -40,9 +48,26 @@ export function AdminDashboard() {
     events: ["ride:requested", "ride:accepted", "ride:status", "ride:completed"],
   });
 
-  if (!stats) {
+  if (loading && !stats) {
     return <p className="text-slate-400">Loading dashboard...</p>;
   }
+
+  if (error && !stats) {
+    return (
+      <div className="space-y-4">
+        <p className="text-red-400">{error}</p>
+        <button
+          type="button"
+          onClick={load}
+          className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-400"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (!stats) return null;
 
   const maxRevenue = Math.max(...stats.dailyRevenue.map((d) => d.revenue), 1);
 

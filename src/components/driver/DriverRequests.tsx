@@ -24,6 +24,9 @@ interface RideRequest {
 
 interface DriverProfile {
   isOnline: boolean;
+  documentsVerified: boolean;
+  verificationStatus: "PENDING" | "VERIFIED" | "REJECTED";
+  verificationRemark: string | null;
 }
 
 export function DriverRequests() {
@@ -32,6 +35,7 @@ export function DriverRequests() {
   const [requests, setRequests] = useState<RideRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
+  const [error, setError] = useState<string>("");
 
   const fetchData = useCallback(async () => {
     const [profileRes, requestsRes] = await Promise.all([
@@ -58,12 +62,17 @@ export function DriverRequests() {
   });
 
   async function acceptRide(rideId: string) {
+    setError("");
     setActionId(rideId);
-    await api(`/api/rides/${rideId}`, {
+    const { error: acceptError } = await api(`/api/rides/${rideId}`, {
       method: "PATCH",
       body: JSON.stringify({ action: "accept" }),
     });
     setActionId(null);
+    if (acceptError) {
+      setError(acceptError);
+      return;
+    }
     router.push("/driver");
   }
 
@@ -98,6 +107,28 @@ export function DriverRequests() {
     );
   }
 
+  if (!profile.documentsVerified) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold">Ride requests</h1>
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-lg font-semibold text-amber-400">
+              Verification required before accepting rides
+            </p>
+            <p className="mt-2 text-slate-400">
+              {profile.verificationRemark ||
+                "Please verify your NIN and driver's license with Prembly."}
+            </p>
+            <Link href="/driver/documents">
+              <Button className="mt-5">Verify documents</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -106,6 +137,7 @@ export function DriverRequests() {
       </div>
 
       <FlowSteps steps={DRIVER_FLOW_STEPS} currentStep={flowStep} />
+      {error && <p className="text-sm text-red-400">{error}</p>}
 
       {requests.length === 0 ? (
         <Card>

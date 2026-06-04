@@ -26,6 +26,7 @@ export async function PATCH(request: Request) {
     const body = await request.json();
     const {
       isOnline,
+      nin,
       licenseNumber,
       licenseDocUrl,
       vehicleMake,
@@ -37,10 +38,14 @@ export async function PATCH(request: Request) {
       currentLng,
     } = body;
 
+    const hasDocIdentityUpdate =
+      nin !== undefined || licenseNumber !== undefined || licenseDocUrl !== undefined;
+
     const profile = await prisma.driverProfile.update({
       where: { userId: session.userId },
       data: {
         ...(isOnline !== undefined && { isOnline }),
+        ...(nin !== undefined && { nin }),
         ...(licenseNumber !== undefined && { licenseNumber }),
         ...(licenseDocUrl !== undefined && { licenseDocUrl }),
         ...(vehicleMake !== undefined && { vehicleMake }),
@@ -50,9 +55,15 @@ export async function PATCH(request: Request) {
         ...(vehicleDocUrl !== undefined && { vehicleDocUrl }),
         ...(currentLat !== undefined && { currentLat }),
         ...(currentLng !== undefined && { currentLng }),
-        documentsVerified:
-          !!(licenseNumber || licenseDocUrl) &&
-          !!(vehicleMake && vehicleModel && vehiclePlate),
+        ...(hasDocIdentityUpdate && {
+          ninVerified: false,
+          licenseVerified: false,
+          documentsVerified: false,
+          verificationStatus: "PENDING",
+          verificationRemark:
+            "Verification pending. Submit documents for validation before accepting rides.",
+          verificationCheckedAt: null,
+        }),
       },
     });
 

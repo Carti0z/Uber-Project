@@ -84,12 +84,42 @@ Movee needs a **always-on Node server** (Socket.io + custom `server.ts`). **Verc
 
 ### Before you deploy
 
-1. **PostgreSQL** — the schema uses PostgreSQL (required for Railway and other hosts). For local dev: `docker compose up -d` then set `DATABASE_URL` in `.env` from `.env.example`.
+1. **Use PostgreSQL** (not SQLite) in production — SQLite files are lost on most cloud restarts.
+
+   In `prisma/schema.prisma`, change:
+
+   ```prisma
+   datasource db {
+     provider = "postgresql"
+     url      = env("DATABASE_URL")
+   }
+   ```
 
 2. **Set strong secrets** — copy `.env.example` and set:
    - `JWT_SECRET` — long random string ([generate one](https://generate-secret.vercel.app/32))
    - `NEXT_PUBLIC_APP_URL` — your live URL, e.g. `https://movee.up.railway.app`
    - `DATABASE_URL` — PostgreSQL connection string from your host
+
+### Prembly setup (driver verification)
+
+Driver ride acceptance is gated by document verification (`NIN` + `Driver's License`) via Prembly.
+
+Add these variables in your deployment environment:
+
+| Variable | Required | Example |
+|----------|----------|---------|
+| `PREMBLY_API_KEY` | Yes | `your-prembly-api-key` |
+| `PREMBLY_APP_ID` | Usually yes | `your-app-id` |
+| `PREMBLY_BASE_URL` | Optional | `https://api.prembly.com` |
+| `PREMBLY_NIN_PATH` | Optional | `/identitypass/verification/nin` |
+| `PREMBLY_DRIVERS_LICENSE_PATH` | Optional | `/identitypass/verification/drivers_license` |
+
+Quick verification check after deploy:
+1. Log in as a **Driver** and open `/driver/documents`.
+2. Save NIN and license details, then click **Verify with Prembly**.
+3. Confirm status changes to `VERIFIED` and remark is recorded.
+4. Log in as **Admin** and review centrally at `/admin/verifications`.
+5. Ensure unverified drivers cannot accept rides from `/driver/requests`.
 
 3. **Run migrations** after deploy:
 
@@ -104,34 +134,25 @@ Movee needs a **always-on Node server** (Socket.io + custom `server.ts`). **Verc
 
 ### Option A — Railway (recommended, easiest)
 
-The repo includes `railway.toml` with build/start commands. Prisma uses **PostgreSQL**.
+Good for beginners: Node + PostgreSQL + HTTPS in one place.
 
-1. Push your code to **GitHub** ([Carti0z/Movee](https://github.com/Carti0z/Movee)).
-2. [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub** → select **Movee**.
-3. In the project, click **+ New** → **Database** → **PostgreSQL**.
-4. Click your **web service** (the repo) → **Variables** → **Add variable** (or **Reference** the Postgres service’s `DATABASE_URL`):
+1. Push your code to **GitHub**.
+2. Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub** → select your repo.
+3. Add a **PostgreSQL** plugin to the project → copy `DATABASE_URL` into your app service variables.
+4. In the app service → **Variables**, add:
 
-   | Variable | Value |
-   |----------|--------|
-   | `DATABASE_URL` | Reference → PostgreSQL → `DATABASE_URL` |
-   | `JWT_SECRET` | Long random string |
-   | `NEXT_PUBLIC_APP_URL` | Your Railway public URL (Settings → Networking → generate domain), e.g. `https://movee-production.up.railway.app` |
+   | Variable | Example |
+   |----------|---------|
+   | `DATABASE_URL` | (from PostgreSQL plugin) |
+   | `JWT_SECRET` | your-secret |
+   | `NEXT_PUBLIC_APP_URL` | `https://your-app.up.railway.app` |
    | `NODE_ENV` | `production` |
-   | `NEXT_PUBLIC_APP_NAME` | `Movee` |
-   | `PLATFORM_COMMISSION_RATE` | `0.15` |
-   | `NEXT_PUBLIC_COMMISSION_RATE` | `0.15` |
 
-5. **Settings** → **Networking** → **Generate Domain** (if you have not already).
-6. Set `NEXT_PUBLIC_APP_URL` to that exact HTTPS URL (no trailing slash), then **Redeploy**.
-7. After the first successful deploy: service → **⋯** → **Shell** → run once:
-
-   ```bash
-   npm run db:seed
-   ```
-
-8. Open the public URL and log in with demo accounts (see above).
-
-**CLI (optional):** `npm i -g @railway/cli` → `railway login` → `railway link` → `railway up`.
+5. **Settings** → **Deploy**:
+   - **Build command:** `npm install && npx prisma generate && npm run build`
+   - **Start command:** `npx prisma db push && npm run start`
+6. Open the generated URL → run seed once via Railway shell: `npm run db:seed`
+7. Optional: **Settings** → **Networking** → add a custom domain.
 
 ---
 

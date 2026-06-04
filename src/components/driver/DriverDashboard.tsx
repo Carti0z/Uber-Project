@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RideMap } from "@/components/map/RideMap";
@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { FlowSteps } from "@/components/ui/FlowSteps";
 import { api } from "@/lib/api";
+import { getCurrentPosition } from "@/lib/geolocation";
+import { useGeolocation } from "@/hooks/useGeolocation";
 import { splitFare } from "@/lib/fare";
 import {
   formatCurrency,
@@ -16,7 +18,7 @@ import {
   driverFlowStep,
 } from "@/lib/utils";
 import { useRideRealtime } from "@/hooks/useRideRealtime";
-import { Bell, MapPin, Navigation, Power, User } from "lucide-react";
+import { Bell, Crosshair, Loader2, MapPin, Navigation, Power, User } from "lucide-react";
 
 interface ActiveRide {
   id: string;
@@ -41,7 +43,7 @@ interface DriverProfile {
   currentLng: number | null;
 }
 
-const DEFAULT_LOC = { lat: 40.7128, lng: -74.006 };
+const LOCATION_UPDATE_MS = 10_000;
 
 export function DriverDashboard() {
   const router = useRouter();
@@ -49,7 +51,21 @@ export function DriverDashboard() {
   const [pendingCount, setPendingCount] = useState(0);
   const [activeRide, setActiveRide] = useState<ActiveRide | null>(null);
   const [loading, setLoading] = useState(true);
+  const [togglingOnline, setTogglingOnline] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [lastEarning, setLastEarning] = useState<number | null>(null);
+  const lastSentRef = useRef(0);
+
+  const {
+    coords: liveLocation,
+    loading: locating,
+    error: geoError,
+    supported: geoSupported,
+  } = useGeolocation({
+    enabled: !!profile?.isOnline,
+    watch: !!profile?.isOnline,
+    maximumAge: 5_000,
+  });
 
   const fetchData = useCallback(async () => {
     const [profileRes, requestsRes, earningsRes] = await Promise.all([
@@ -81,40 +97,104 @@ export function DriverDashboard() {
     events: ["ride:requested", "ride:status", "ride:location", "ride:completed"],
   });
 
-  useEffect(() => {
-    if (!profile?.isOnline) return;
-    navigator.geolocation?.getCurrentPosition(async (pos) => {
+  const syncLocation = useCallback(
+    async (lat: number, lng: number) => {
       await api("/api/driver/profile", {
         method: "PATCH",
-        body: JSON.stringify({
-          currentLat: pos.coords.latitude,
-          currentLng: pos.coords.longitude,
-        }),
+        body: JSON.stringify({ currentLat: lat, currentLng: lng }),
       });
-    });
-  }, [profile?.isOnline]);
+      setProfile((p) => (p ? { ...p, currentLat: lat, currentLng: lng } : p));
+
+      if (
+        activeRide &&
+        ["DRIVER_ASSIGNED", "DRIVER_ARRIVING", "IN_PROGRESS"].includes(activeRide.status)
+      ) {
+        await api(`/api/rides/${activeRide.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            action: "update_location",
+            driverLat: lat,
+            driverLng: lng,
+          }),
+        });
+        setActiveRide((r) =>
+          r ? { ...r, driverLat: lat, driverLng: lng } : r
+        );
+      }
+    },
+    [activeRide]
+  );
+
+  useEffect(() => {
+    if (!liveLocation || !profile?.isOnline) return;
+    const now = Date.now();
+    if (now - lastSentRef.current < LOCATION_UPDATE_MS) return;
+    lastSentRef.current = now;
+    syncLocation(liveLocation.lat, liveLocation.lng).catch(() => {});
+  }, [liveLocation, profile?.isOnline, syncLocation]);
 
   async function toggleOnline() {
+    setLocationError(null);
     const newStatus = !profile?.isOnline;
-    await api("/api/driver/profile", {
-      method: "PATCH",
-      body: JSON.stringify({
-        isOnline: newStatus,
-        currentLat: DEFAULT_LOC.lat,
-        currentLng: DEFAULT_LOC.lng,
-      }),
-    });
+
+    if (newStatus) {
+      if (!geoSupported) {
+        setLocationError("Your browser does not support location services.");
+        return;
+      }
+      setTogglingOnline(true);
+      try {
+        const pos = await getCurrentPosition();
+        await api("/api/driver/profile", {
+          method: "PATCH",
+          body: JSON.stringify({
+            isOnline: true,
+            currentLat: pos.lat,
+            currentLng: pos.lng,
+          }),
+        });
+      } catch (err) {
+        setLocationError(
+          err instanceof Error ? err.message : "Enable location to go online"
+        );
+        setTogglingOnline(false);
+        return;
+      }
+      setTogglingOnline(false);
+    } else {
+      await api("/api/driver/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ isOnline: false }),
+      });
+    }
     fetchData();
   }
 
   async function rideAction(action: string) {
     if (!activeRide) return;
-    const loc = profile?.currentLat
-      ? { driverLat: profile.currentLat, driverLng: profile.currentLng }
-      : {};
+    let driverLat = profile?.currentLat ?? liveLocation?.lat;
+    let driverLng = profile?.currentLng ?? liveLocation?.lng;
+
+    if (action === "update_location" || action === "arriving" || action === "start") {
+      try {
+        const pos = await getCurrentPosition({ maximumAge: 0 });
+        driverLat = pos.lat;
+        driverLng = pos.lng;
+        await syncLocation(pos.lat, pos.lng);
+      } catch {
+        setLocationError("Could not read GPS for this action");
+        return;
+      }
+    }
+
     const { data } = await api<{ ride: ActiveRide }>(`/api/rides/${activeRide.id}`, {
       method: "PATCH",
-      body: JSON.stringify({ action, ...loc }),
+      body: JSON.stringify({
+        action,
+        ...(driverLat != null && driverLng != null
+          ? { driverLat, driverLng }
+          : {}),
+      }),
     });
     if (action === "complete" && data?.ride) {
       router.push("/driver/earnings");
@@ -129,6 +209,15 @@ export function DriverDashboard() {
     activeRide?.status
   );
 
+  const driverOnMap =
+    activeRide?.driverLat && activeRide?.driverLng
+      ? { lat: activeRide.driverLat, lng: activeRide.driverLng }
+      : liveLocation
+        ? { lat: liveLocation.lat, lng: liveLocation.lng }
+        : profile?.currentLat && profile?.currentLng
+          ? { lat: profile.currentLat, lng: profile.currentLng }
+          : undefined;
+
   if (loading) return <p className="text-slate-400">Loading dashboard...</p>;
 
   return (
@@ -137,18 +226,37 @@ export function DriverDashboard() {
         <div>
           <h1 className="text-2xl font-bold">Driver dashboard</h1>
           <p className="text-slate-400">
-            {profile?.isOnline ? "You are online and ready" : "You are offline"}
+            {profile?.isOnline
+              ? locating
+                ? "Getting your live location…"
+                : liveLocation
+                  ? "Live GPS active — riders see your position"
+                  : "You are online"
+              : "You are offline"}
           </p>
+          {(locationError || geoError) && profile?.isOnline && (
+            <p className="mt-1 text-sm text-amber-400">{locationError || geoError}</p>
+          )}
         </div>
         <Button
           variant={profile?.isOnline ? "danger" : "primary"}
           onClick={toggleOnline}
           size="lg"
+          loading={togglingOnline}
+          disabled={togglingOnline}
         >
           <Power className="h-5 w-5" />
           {profile?.isOnline ? "Go offline" : "Go online"}
         </Button>
       </div>
+
+      {profile?.isOnline && liveLocation && (
+        <p className="flex items-center gap-2 text-sm text-violet-400">
+          <Crosshair className="h-4 w-4" />
+          {liveLocation.lat.toFixed(5)}, {liveLocation.lng.toFixed(5)}
+          {locating && <Loader2 className="h-3 w-3 animate-spin" />}
+        </p>
+      )}
 
       <FlowSteps steps={DRIVER_FLOW_STEPS} currentStep={flowStep} />
 
@@ -224,13 +332,9 @@ export function DriverDashboard() {
               lat: activeRide.destinationLat,
               lng: activeRide.destinationLng,
             }}
-            driver={
-              activeRide.driverLat && activeRide.driverLng
-                ? { lat: activeRide.driverLat, lng: activeRide.driverLng }
-                : profile?.currentLat
-                  ? { lat: profile.currentLat, lng: profile.currentLng! }
-                  : undefined
-            }
+            driver={driverOnMap}
+            userLocation={liveLocation ?? undefined}
+            followUser={!!liveLocation && !activeRide.driverLat}
             className="h-[360px] overflow-hidden rounded-2xl"
           />
         </div>
@@ -250,7 +354,7 @@ export function DriverDashboard() {
                 <p className="text-sm text-slate-400">
                   {pendingCount > 0
                     ? "Head to ride requests to accept"
-                    : "Requests will appear on the requests page"}
+                    : "Your live location is shared while online"}
                 </p>
               </div>
             </div>
@@ -269,7 +373,7 @@ export function DriverDashboard() {
       ) : (
         <Card>
           <CardContent className="py-12 text-center text-slate-400">
-            Go online to start receiving ride requests
+            Go online to start receiving ride requests. Location access is required.
           </CardContent>
         </Card>
       )}

@@ -6,6 +6,7 @@ import { COMMISSION_RATE, getPlatformCommissionFromRide } from "@/lib/fare";
 const ACTIVE_STATUSES = ["REQUESTED", "DRIVER_ASSIGNED", "DRIVER_ARRIVING", "IN_PROGRESS"] as const;
 
 export async function GET() {
+  try {
   const { error } = await requireAdmin();
   if (error) return error;
 
@@ -92,4 +93,8 @@ export async function GET() {
     paidTrips,
     dailyRevenue,
   });
+  } catch (err) {
+    console.error("Admin stats error:", err);
+    return NextResponse.json({ error: "Failed to load dashboard stats" }, { status: 500 });
+  }
 }

@@ -105,6 +105,16 @@ export async function PATCH(
     if (!driverProfile?.isOnline) {
       return NextResponse.json({ error: "Go online to accept rides" }, { status: 400 });
     }
+    if (!driverProfile.documentsVerified) {
+      return NextResponse.json(
+        {
+          error:
+            driverProfile.verificationRemark ||
+            "Complete NIN and driver's license verification before accepting rides.",
+        },
+        { status: 400 }
+      );
+    }
 
     const updated = await prisma.ride.update({
       where: { id },

@@ -35,11 +35,19 @@ interface Reports {
 
 export function AdminReports() {
   const [reports, setReports] = useState<Reports | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    api<Reports>("/api/admin/reports").then(({ data }) => {
-      if (data) setReports(data);
-    });
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const { data, error: apiError } = await api<Reports>("/api/admin/reports");
+    if (data) {
+      setReports(data);
+    } else {
+      setError(apiError || "Failed to load reports");
+    }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -51,7 +59,26 @@ export function AdminReports() {
     events: ["ride:completed", "ride:status", "ride:requested"],
   });
 
-  if (!reports) return <p className="text-slate-400">Loading reports...</p>;
+  if (loading && !reports) {
+    return <p className="text-slate-400">Loading reports...</p>;
+  }
+
+  if (error && !reports) {
+    return (
+      <div className="space-y-4">
+        <p className="text-red-400">{error}</p>
+        <button
+          type="button"
+          onClick={load}
+          className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-400"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (!reports) return null;
 
   const maxRevenue = Math.max(...reports.monthlyTrips.map((m) => m.revenue), 1);
   const totalPayments =

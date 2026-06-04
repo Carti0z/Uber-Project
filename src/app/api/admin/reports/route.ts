@@ -8,6 +8,7 @@ import {
 } from "@/lib/fare";
 
 export async function GET() {
+  try {
   const { error } = await requireAdmin();
   if (error) return error;
 
@@ -150,4 +151,8 @@ export async function GET() {
     monthlyTrips,
     topDrivers,
   });
+  } catch (err) {
+    console.error("Admin reports error:", err);
+    return NextResponse.json({ error: "Failed to load reports" }, { status: 500 });
+  }
 }

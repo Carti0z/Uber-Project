@@ -9,8 +9,19 @@ import { Input } from "@/components/ui/Input";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { FlowSteps } from "@/components/ui/FlowSteps";
 import { api } from "@/lib/api";
+import { reverseGeocode } from "@/lib/geolocation";
+import { useGeolocation } from "@/hooks/useGeolocation";
 import { formatCurrency, RIDER_BOOKING_STEPS } from "@/lib/utils";
-import { ArrowLeft, ArrowRight, CreditCard, Banknote, MapPin, Navigation } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  CreditCard,
+  Banknote,
+  Crosshair,
+  Loader2,
+  MapPin,
+  Navigation,
+} from "lucide-react";
 
 interface Estimate {
   distanceKm: number;
@@ -18,20 +29,48 @@ interface Estimate {
   estimatedFare: number;
 }
 
-const DEFAULT_CENTER = { lat: 40.7128, lng: -74.006 };
+const FALLBACK_CENTER = { lat: 40.7128, lng: -74.006 };
 
 export function RiderBooking() {
   const router = useRouter();
   const [step, setStep] = useState(1);
-  const [pickupAddress, setPickupAddress] = useState("Times Square, New York");
-  const [destinationAddress, setDestinationAddress] = useState("Central Park, New York");
-  const [pickup, setPickup] = useState(DEFAULT_CENTER);
-  const [destination, setDestination] = useState({ lat: 40.7829, lng: -73.9654 });
+  const [pickupAddress, setPickupAddress] = useState("");
+  const [destinationAddress, setDestinationAddress] = useState("");
+  const [pickup, setPickup] = useState(FALLBACK_CENTER);
+  const [destination, setDestination] = useState(FALLBACK_CENTER);
   const [selecting, setSelecting] = useState<"pickup" | "destination" | null>(null);
   const [estimate, setEstimate] = useState<Estimate | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"CASH" | "CARD">("CASH");
   const [loading, setLoading] = useState(false);
+  const [locatingTarget, setLocatingTarget] = useState<"pickup" | "destination" | null>(null);
   const [error, setError] = useState("");
+
+  const {
+    coords: userLocation,
+    loading: locatingUser,
+    error: locationError,
+    refresh: refreshLocation,
+    supported: geoSupported,
+  } = useGeolocation({ enabled: true, watch: step <= 2 });
+
+  const applyCoords = useCallback(
+    async (target: "pickup" | "destination", lat: number, lng: number) => {
+      const address = await reverseGeocode(lat, lng);
+      if (target === "pickup") {
+        setPickup({ lat, lng });
+        setPickupAddress(address);
+      } else {
+        setDestination({ lat, lng });
+        setDestinationAddress(address);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!userLocation || pickupAddress) return;
+    applyCoords("pickup", userLocation.lat, userLocation.lng);
+  }, [userLocation, pickupAddress, applyCoords]);
 
   const fetchEstimate = useCallback(async () => {
     const { data } = await api<Estimate>("/api/rides", {
@@ -61,16 +100,41 @@ export function RiderBooking() {
     checkActive();
   }, [router]);
 
-  function handleMapClick(lat: number, lng: number) {
+  async function handleMapClick(lat: number, lng: number) {
     if (selecting === "pickup" || (step === 1 && selecting === null)) {
-      setPickup({ lat, lng });
-      setPickupAddress(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+      await applyCoords("pickup", lat, lng);
     } else if (selecting === "destination" || step === 2) {
-      setDestination({ lat, lng });
-      setDestinationAddress(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+      await applyCoords("destination", lat, lng);
     }
     setSelecting(null);
   }
+
+  function applyMyLocation(target: "pickup" | "destination") {
+    setError("");
+    setLocatingTarget(target);
+    if (userLocation) {
+      applyCoords(target, userLocation.lat, userLocation.lng).then(() =>
+        setLocatingTarget(null)
+      );
+      return;
+    }
+    refreshLocation();
+  }
+
+  useEffect(() => {
+    if (!locatingTarget || !userLocation) return;
+    applyCoords(locatingTarget, userLocation.lat, userLocation.lng).then(() =>
+      setLocatingTarget(null)
+    );
+  }, [userLocation, locatingTarget, applyCoords]);
+
+  useEffect(() => {
+    if (!locatingTarget || userLocation) return;
+    if (!locatingUser && locationError) {
+      setError(locationError);
+      setLocatingTarget(null);
+    }
+  }, [locatingTarget, locatingUser, locationError, userLocation]);
 
   async function requestRide() {
     setLoading(true);
@@ -108,6 +172,8 @@ export function RiderBooking() {
     setStep((s) => Math.min(s + 1, 4));
   }
 
+  const locating = locatingUser || locatingTarget !== null;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -124,20 +190,55 @@ export function RiderBooking() {
 
       <FlowSteps steps={RIDER_BOOKING_STEPS} currentStep={step} />
 
+      {geoSupported && (
+        <p className="flex items-center gap-2 text-sm text-violet-400">
+          {locating ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" /> Detecting your location…
+            </>
+          ) : userLocation ? (
+            <>
+              <Crosshair className="h-4 w-4" /> Live location active
+            </>
+          ) : locationError ? (
+            <span className="text-amber-400">{locationError}</span>
+          ) : null}
+        </p>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardContent className="space-y-4 pt-6">
             {step === 1 && (
               <>
-                <p className="text-sm text-slate-400">Select your pickup location on the map or enter an address.</p>
-                <Button
-                  type="button"
-                  variant={selecting === "pickup" ? "primary" : "outline"}
-                  size="sm"
-                  onClick={() => setSelecting(selecting === "pickup" ? null : "pickup")}
-                >
-                  <MapPin className="h-4 w-4" /> Pin pickup on map
-                </Button>
+                <p className="text-sm text-slate-400">
+                  Your pickup is set from GPS when allowed. You can also tap the map or enter an
+                  address.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    disabled={!geoSupported || locating}
+                    onClick={() => applyMyLocation("pickup")}
+                  >
+                    {locating && locatingTarget === "pickup" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Crosshair className="h-4 w-4" />
+                    )}
+                    Use my location
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={selecting === "pickup" ? "primary" : "outline"}
+                    size="sm"
+                    onClick={() => setSelecting(selecting === "pickup" ? null : "pickup")}
+                  >
+                    <MapPin className="h-4 w-4" /> Pin on map
+                  </Button>
+                </div>
                 {selecting === "pickup" && (
                   <p className="text-sm text-amber-400">Click the map to set pickup</p>
                 )}
@@ -145,6 +246,7 @@ export function RiderBooking() {
                   label="Pickup location"
                   value={pickupAddress}
                   onChange={(e) => setPickupAddress(e.target.value)}
+                  placeholder="Detecting location…"
                 />
               </>
             )}
@@ -152,16 +254,32 @@ export function RiderBooking() {
             {step === 2 && (
               <>
                 <p className="text-sm text-slate-400">Where are you headed?</p>
-                <Button
-                  type="button"
-                  variant={selecting === "destination" ? "primary" : "outline"}
-                  size="sm"
-                  onClick={() =>
-                    setSelecting(selecting === "destination" ? null : "destination")
-                  }
-                >
-                  <Navigation className="h-4 w-4" /> Pin destination on map
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!geoSupported || locating}
+                    onClick={() => applyMyLocation("destination")}
+                  >
+                    {locating && locatingTarget === "destination" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Crosshair className="h-4 w-4" />
+                    )}
+                    Use my location
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={selecting === "destination" ? "primary" : "outline"}
+                    size="sm"
+                    onClick={() =>
+                      setSelecting(selecting === "destination" ? null : "destination")
+                    }
+                  >
+                    <Navigation className="h-4 w-4" /> Pin on map
+                  </Button>
+                </div>
                 {selecting === "destination" && (
                   <p className="text-sm text-amber-400">Click the map to set destination</p>
                 )}
@@ -169,6 +287,7 @@ export function RiderBooking() {
                   label="Destination"
                   value={destinationAddress}
                   onChange={(e) => setDestinationAddress(e.target.value)}
+                  placeholder="Enter destination or use map"
                 />
               </>
             )}
@@ -257,6 +376,8 @@ export function RiderBooking() {
             <RideMap
               pickup={step >= 1 ? pickup : undefined}
               destination={step >= 2 ? destination : undefined}
+              userLocation={userLocation ?? undefined}
+              followUser={step === 1 && !!userLocation}
               onMapClick={handleMapClick}
               interactive
               className="h-[420px]"

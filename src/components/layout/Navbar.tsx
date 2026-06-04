@@ -24,6 +24,7 @@ export function Navbar({ user }: NavbarProps) {
     { href: "/admin", label: "Dashboard" },
     { href: "/admin/users", label: "User Management" },
     { href: "/admin/rides", label: "Ride Management" },
+    { href: "/admin/verifications", label: "Verifications" },
     { href: "/admin/reports", label: "Reports" },
   ];
 
@@ -37,6 +38,7 @@ export function Navbar({ user }: NavbarProps) {
   const driverLinks = [
     { href: "/driver", label: "Dashboard" },
     { href: "/driver/requests", label: "Requests" },
+    { href: "/driver/documents", label: "Verification" },
     { href: "/driver/earnings", label: "Earnings" },
     { href: "/driver/profile", label: "Profile" },
   ];

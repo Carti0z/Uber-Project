@@ -7,8 +7,10 @@ interface RideMapProps {
   pickup?: { lat: number; lng: number };
   destination?: { lat: number; lng: number };
   driver?: { lat: number; lng: number };
+  userLocation?: { lat: number; lng: number };
   className?: string;
   interactive?: boolean;
+  followUser?: boolean;
   onMapClick?: (lat: number, lng: number) => void;
 }
 

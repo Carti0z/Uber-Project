@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useGeolocation } from "@/hooks/useGeolocation";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { RideMap } from "@/components/map/RideMap";
@@ -58,17 +59,23 @@ export function RideTracking({ rideId }: { rideId: string }) {
   const [ride, setRide] = useState<Ride | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function fetchRide() {
+  const fetchRide = useCallback(async () => {
     const { data } = await api<{ ride: Ride }>(`/api/rides/${rideId}`);
     if (data?.ride) setRide(data.ride);
     setLoading(false);
-  }
+  }, [rideId]);
 
   useEffect(() => {
     fetchRide();
-  }, [rideId]);
+  }, [fetchRide]);
 
   useRideRealtime({ rideId, onUpdate: fetchRide });
+
+  const isActive = ride ? !["COMPLETED", "CANCELLED"].includes(ride.status) : false;
+  const { coords: userLocation } = useGeolocation({
+    enabled: isActive,
+    watch: isActive,
+  });
 
   async function cancelRide() {
     await api(`/api/rides/${rideId}`, {
@@ -89,7 +96,6 @@ export function RideTracking({ rideId }: { rideId: string }) {
   if (loading) return <p className="text-slate-400">Loading ride...</p>;
   if (!ride) return <p className="text-red-400">Ride not found</p>;
 
-  const isActive = !["COMPLETED", "CANCELLED"].includes(ride.status);
   const driverLoc =
     ride.driverLat && ride.driverLng
       ? { lat: ride.driverLat, lng: ride.driverLng }
@@ -124,6 +130,7 @@ export function RideTracking({ rideId }: { rideId: string }) {
               pickup={{ lat: ride.pickupLat, lng: ride.pickupLng }}
               destination={{ lat: ride.destinationLat, lng: ride.destinationLng }}
               driver={driverLoc}
+              userLocation={userLocation ?? undefined}
               className="h-[360px]"
               interactive={false}
             />
